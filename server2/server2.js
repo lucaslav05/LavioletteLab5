@@ -17,51 +17,40 @@ const dbConfig = {
 };
 
 // ----------------------------------------
-// SET UP MYSQL CONNECTION & INITIALIZE DB/TABLE
-const dbConnection = mysql.createConnection({
+// SET UP MYSQL CONNECTION POOL
+const dbPool = mysql.createPool({
   host: dbConfig.host,
   user: dbConfig.user,
-  password: dbConfig.password
+  password: dbConfig.password,
+  database: dbConfig.database
 });
 
-dbConnection.connect((err) => {
+// ----------------------------------------
+// CREATE TABLE IF IT DOESN'T EXIST
+// No need for explicit dbPool.connect() since we're using a pool.
+dbPool.query(`CREATE DATABASE IF NOT EXISTS \`${dbConfig.database}\``, (err) => {
   if (err) {
-    console.error(messages.error.databaseError, err);
+    console.error(messages.error.createDatabaseError, err);
     return;
   }
   console.log(messages.success.databaseReady);
 
-  // Create the database if it doesn't exist
-  dbConnection.query(`CREATE DATABASE IF NOT EXISTS \`${dbConfig.database}\``, (err) => {
+  const createTableQuery = `
+    DROP TABLE IF EXISTS patient;
+    CREATE TABLE patient (
+        patientid INT(11) NOT NULL AUTO_INCREMENT,
+        name VARCHAR(100) NOT NULL,
+        dateOfBirth DATETIME,
+        PRIMARY KEY (patientid)
+    ) ENGINE=InnoDB;
+  `;
+
+  dbPool.query(createTableQuery, (err) => {
     if (err) {
-      console.error(messages.error.createDatabaseError, err);
-      return;
+      console.error(messages.error.createTableError, err);
+    } else {
+      console.log(messages.success.tableReady);
     }
-    console.log(messages.success.databaseReady);
-
-    dbConnection.changeUser({ database: dbConfig.database }, (err) => {
-      if (err) {
-        console.error(messages.error.changeDatabaseError, err);
-        return;
-      }
-
-      const createTableQuery = `
-        DROP TABLE IF EXISTS patient;
-        CREATE TABLE patient (
-            patientid INT(11) NOT NULL AUTO_INCREMENT,
-            name VARCHAR(100) NOT NULL,
-            dateOfBirth DATETIME,
-            PRIMARY KEY (patientid)
-        ) ENGINE=InnoDB;
-      `;
-      dbConnection.query(createTableQuery, (err) => {
-        if (err) {
-          console.error(messages.error.createTableError, err);
-        } else {
-          console.log(messages.success.tableReady);
-        }
-      });
-    });
   });
 });
 
@@ -124,7 +113,7 @@ function processQuery(queryText, res) {
 
   if (lowerQuery.startsWith("select") || lowerQuery.startsWith("insert")) {
     // Check if the table exists before running the query
-    dbConnection.query('SHOW TABLES LIKE "patient"', (err, results) => {
+    dbPool.query('SHOW TABLES LIKE "patient"', (err, results) => {
       if (err) {
         res.writeHead(500, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: messages.error.queryExecutionError, details: err.message }));
@@ -141,13 +130,13 @@ function processQuery(queryText, res) {
             PRIMARY KEY (patientid)
           ) ENGINE=InnoDB;
         `;
-        dbConnection.query(createTableQuery, (err) => {
+        dbPool.query(createTableQuery, (err) => {
           if (err) {
             res.writeHead(500, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ error: messages.error.createTableError, details: err.message }));
           } else {
             // Table created, now execute the original query
-            dbConnection.query(queryText, (err, results) => {
+            dbPool.query(queryText, (err, results) => {
               if (err) {
                 res.writeHead(500, { "Content-Type": "application/json" });
                 res.end(JSON.stringify({ error: messages.error.queryExecutionError, details: err.message }));
@@ -160,7 +149,7 @@ function processQuery(queryText, res) {
         });
       } else {
         // If the table exists, proceed with the query
-        dbConnection.query(queryText, (err, results) => {
+        dbPool.query(queryText, (err, results) => {
           if (err) {
             res.writeHead(500, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ error: messages.error.queryExecutionError, details: err.message }));
@@ -176,7 +165,6 @@ function processQuery(queryText, res) {
     res.end(JSON.stringify({ error: messages.error.onlySelectInsert }));
   }
 }
-
 
 const PORT = 8080;
 server.listen(PORT, () => {
