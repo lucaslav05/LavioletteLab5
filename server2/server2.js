@@ -93,7 +93,45 @@ function processQuery(queryText, res) {
     }
   }
 
-  if (lowerQuery.startsWith("select") || lowerQuery.startsWith("insert")) {
+  // Check if the table exists before running queries
+  dbPool.query("SHOW TABLES LIKE 'patient'", (err, results) => {
+    if (err) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: messages.error.queryExecutionError, details: err.message }));
+      return;
+    }
+
+    if (results.length === 0) {
+      // Table does not exist, recreate it
+      console.log("Table 'patient' missing. Recreating...");
+
+      const createTableQuery = `
+        CREATE TABLE patient (
+          patientid INT(11) NOT NULL AUTO_INCREMENT,
+          name VARCHAR(100) NOT NULL,
+          dateOfBirth DATETIME,
+          PRIMARY KEY (patientid)
+        ) ENGINE=InnoDB;
+      `;
+
+      dbPool.query(createTableQuery, (err) => {
+        if (err) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: messages.error.createTableError, details: err.message }));
+          return;
+        }
+        console.log("Table 'patient' recreated successfully.");
+        executeQuery(queryText, res);
+      });
+    } else {
+      // Table exists, proceed with the query
+      executeQuery(queryText, res);
+    }
+  });
+}
+
+function executeQuery(queryText, res) {
+  if (queryText.toLowerCase().startsWith("select") || queryText.toLowerCase().startsWith("insert")) {
     dbPool.query(queryText, (err, results) => {
       if (err) {
         res.writeHead(500, { "Content-Type": "application/json" });
