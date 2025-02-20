@@ -63,8 +63,8 @@ const server = http.createServer((req, res) => {
       processQuery(queryText, res);
     } else if (req.method === "POST") {
       let body = "";
-      req.on('data', chunk => { body += chunk; });
-      req.on('end', () => { processQuery(body.toString(), res); });
+      req.on('data', chunk => { body += chunk.toString(); });
+      req.on('end', () => { processQuery(body, res); });
     } else {
       res.writeHead(405, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: messages.error.methodNotAllowed }));
