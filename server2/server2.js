@@ -18,20 +18,29 @@ const dbConfig = {
 // SET UP MYSQL CONNECTION POOL
 const dbPool = mysql.createPool(dbConfig);
 
-dbPool.query(`
-  CREATE TABLE IF NOT EXISTS patient (
-    patientid INT(11) NOT NULL AUTO_INCREMENT,
-    name VARCHAR(100) NOT NULL,
-    dateOfBirth DATETIME,
-    PRIMARY KEY (patientid)
-  ) ENGINE=InnoDB;
-`, (err) => {
+dbPool.getConnection((err, connection) => {
   if (err) {
-    console.error(messages.error.createTableError, err);
-  } else {
-    console.log(messages.success.tableReady);
+    console.error(messages.error.dbConnectionError, err);
+    return;
   }
+
+  connection.query(`
+    CREATE TABLE IF NOT EXISTS patient (
+      patientid INT(11) NOT NULL AUTO_INCREMENT,
+      name VARCHAR(100) NOT NULL,
+      dateOfBirth DATETIME,
+      PRIMARY KEY (patientid)
+    ) ENGINE=InnoDB;
+  `, (err) => {
+    if (err) {
+      console.error(messages.error.createTableError, err);
+    } else {
+      console.log(messages.success.tableReady);
+    }
+    connection.release(); // Release the connection back to the pool
+  });
 });
+
 
 const server = http.createServer((req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
